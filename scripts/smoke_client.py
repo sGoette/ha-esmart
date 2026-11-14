@@ -1,7 +1,7 @@
 """Read-only smoke test of the eSmart client against the real controller.
 
 Usage: .venv/bin/python scripts/smoke_client.py [seconds]
-Uses the paired test device credentials from homebridge-esmart/spike/.esmart-test.json.
+Uses the paired test device credentials from spike/.esmart-test.json.
 Sends only GET requests. allowed_nodes is empty, so commands are impossible.
 """
 import asyncio, json, logging, sys, time, pathlib, importlib.util
@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("esmart_client", ROOT / "custom_components/esmart/client.py")
 client_mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(client_mod)
 
-CREDS = pathlib.Path.home() / "Documents/git/homebridge-esmart/spike/.esmart-test.json"
+CREDS = ROOT / "spike" / ".esmart-test.json"
 
 async def main(seconds: int) -> None:
     creds = json.loads(CREDS.read_text())

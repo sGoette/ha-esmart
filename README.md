@@ -39,4 +39,16 @@ python3 -m venv .venv && .venv/bin/pip install homeassistant slixmpp pytest
 ./scripts/develop                        # HA on http://localhost:8123 with the integration linked in
 ```
 
+### Protocol test client (`spike/`)
+
+Standalone Node client for checking whether eSmart changed its protocol. Credentials (`.esmart-test.json`),
+the allow-list (`.esmart-allow.json`), `captures/` and `logs/` stay local and are gitignored.
+
+```bash
+cd spike && npm ci
+node esmart-test.mjs listen 30   # log in, GET structure/config, print the live INFO stream
+node esmart-test.mjs serve       # local web UI on http://127.0.0.1:8099 (pairing code, status, raw log)
+node esmart-test.mjs register    # new test account (then pair it via serve) · unregister removes it
+```
+
 Protocol notes: [docs/protocol.md](docs/protocol.md).

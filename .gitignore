@@ -6,3 +6,6 @@ config/*
 !config/configuration.yaml
 *.secret.json
 .esmart-*.json
+spike/node_modules/
+spike/captures/
+spike/logs/

@@ -1,0 +1,9 @@
+{
+  "name": "esmart-spike",
+  "private": true,
+  "type": "module",
+  "description": "Test client for the eSmart XMPP protocol. Read-only except CMD/operation for nodes in .esmart-allow.json.",
+  "dependencies": {
+    "@xmpp/client": "^0.13.1"
+  }
+}

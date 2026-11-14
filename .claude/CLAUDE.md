@@ -11,7 +11,7 @@ The user does not work for eSmart. Never create a public remote, publish to HACS
 Some smart devices hang off eSmart-controlled on/off sockets. Switching them is not acceptable.
 
 - Never send an eSmart message with `method: "CMD"` for a node the user has not explicitly declared as switchable.
-- Declared nodes are the integration's "switchable devices" option (and, for the old spike client, `homebridge-esmart/spike/.esmart-allow.json`). Only the user changes them. Claude never adds, widens or works around them, and never derives "declared" from a name or type.
+- Declared nodes are the integration's "switchable devices" option (and, for the spike test client, `spike/.esmart-allow.json`). Only the user changes them. Claude never adds, widens or works around them, and never derives "declared" from a name or type.
 - Even for declared nodes, only `CMD`/`operation` with fields of that node. Never `scene`, never `tablet_operation` (holiday mode).
 - The integration defaults to read-only and enforces the allow-list in the client (single choke point `ESmartClient.command`). Do not add code paths that bypass it.
 - Claude never toggles entities mapped to undeclared nodes, in the UI or via the HA API.
@@ -20,4 +20,4 @@ Some smart devices hang off eSmart-controlled on/off sockets. Switching them is 
 ## Dev setup
 
 - `.venv` with `homeassistant` + `slixmpp`; run `scripts/develop` to start HA with `config/` (custom_components symlinked).
-- Test credentials of the paired test device: `homebridge-esmart/spike/.esmart-test.json` (never commit credentials).
+- Test credentials of the paired test device: `spike/.esmart-test.json` (never commit credentials).
