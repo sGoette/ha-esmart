@@ -3,7 +3,7 @@
   "name": "eSmart",
   "codeowners": [],
   "config_flow": true,
-  "documentation": "https://example.invalid/ha-esmart",
+  "documentation": "https://github.com/sGoette/ha-esmart",
   "integration_type": "hub",
   "iot_class": "cloud_push",
   "requirements": ["slixmpp>=1.8.5"],

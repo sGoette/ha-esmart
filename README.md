@@ -21,14 +21,42 @@ Devices are created automatically from the apartment structure, with rooms as ar
 
 Nothing can be switched until you select devices under **Settings → Devices & services → eSmart → Configure**. Leave out sockets that power other equipment. Scenes and holiday mode are never controlled by this integration.
 
-## Install
+## Install (e.g. Home Assistant OS in a TrueNAS Scale VM)
 
-1. Copy `custom_components/esmart` into your Home Assistant `config/custom_components/`, then restart.
-2. **Settings → Devices & services → Add integration → eSmart**:
-   - **Pair a new device**: registers a new remote device, then asks for a pairing code from the eSmart panel. Enter it right away, because codes expire quickly.
-   - **Use an already paired device**: JID and password of an existing remote device.
+### Before you start
 
-Remove a device later by unpairing it on the eSmart panel.
+- **Home Assistant version**: use a recent release (developed on 2026.11). Older versions work but don't show the eSmart logos, because they can't load brand images from a custom integration.
+- **Internet access**: on first start Home Assistant installs the `slixmpp` library from PyPI, and the integration connects out to `xmpp.myesmart.net` on TCP port 5222. No incoming ports are needed.
+- **eSmart panel nearby**: pairing codes expire quickly.
+
+### 1. Copy the integration
+
+Copy the folder `custom_components/esmart` from this repo to `/config/custom_components/esmart` on the Home Assistant machine, then restart Home Assistant.
+
+On Home Assistant OS, the easiest ways are the **Samba share** add-on (Mac: Finder → Go → Connect to Server → `smb://homeassistant.local/config`; Windows: `\\homeassistant\config`) or the **Terminal & SSH** add-on (`scp -r`). HACS is not used, because this repo is private.
+
+**Updating later**: copy the folder again (replace the old one) and restart.
+
+### 2. Add and pair
+
+**Settings → Devices & services → Add integration → eSmart**:
+
+- **Pair a new device** (recommended): registers a new remote device for this Home Assistant, then asks for a pairing code from the eSmart panel. Enter it right away.
+- **Use an already paired device**: JID and password of an existing remote device. Don't reuse the test device from `spike/`; keep that one for the test client.
+
+Devices, rooms (as areas) and sensors appear automatically.
+
+### 3. Declare switchable devices
+
+A new installation is read-only. Select the devices Home Assistant may switch under **Settings → Devices & services → eSmart → Configure**. This list is per installation and is not copied from another one. Leave out sockets that power other equipment.
+
+### 4. Optional: Energy dashboard
+
+eSmart only streams current power (W), not energy totals. For the Energy dashboard, add a helper per power sensor: **Settings → Devices & services → Helpers → Create helper → Integral sensor** (source: the eSmart power sensor, method: left, metric prefix: k, time unit: hours), then add the resulting kWh sensor under **Settings → Dashboards → Energy**.
+
+### Removing
+
+Delete the integration in Home Assistant, then unpair its device on the eSmart panel.
 
 ## Development (macOS)
 
