@@ -1,0 +1,52 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "eSmart",
+        "description": "Unofficial integration. Connect Home Assistant as a remote device of your eSmart apartment.",
+        "menu_options": {
+          "pair": "Pair a new device (pairing code from the eSmart panel)",
+          "credentials": "Use an already paired device (JID and password)"
+        }
+      },
+      "pair": {
+        "title": "Pair with your eSmart apartment",
+        "description": "A new remote device was registered as `{jid}` and is connected.\n\nOn your eSmart panel, create a pairing code for a new remote device and enter it here right away (codes expire quickly).",
+        "data": { "code": "Pairing code" }
+      },
+      "credentials": {
+        "title": "Existing eSmart device",
+        "data": { "jid": "JID (w-…@myesmart.net)", "password": "Password" }
+      }
+    },
+    "error": {
+      "invalid_code": "The code must be a number.",
+      "pair_failed": "No answer from the controller. The code may have expired; create a new one and try again.",
+      "cannot_connect": "Could not connect to the eSmart server.",
+      "invalid_auth": "Login failed.",
+      "not_paired": "Logged in, but the controller did not invite this device. Is it paired?"
+    },
+    "abort": {
+      "already_configured": "This apartment is already configured.",
+      "cannot_connect": "Could not register a new device with the eSmart server."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Switchable devices",
+        "description": "By default the integration is read-only. Only the devices selected here can be switched from Home Assistant. Leave out sockets that power other equipment. Scenes and holiday mode are never controlled.",
+        "data": { "switchable_nodes": "Devices Home Assistant may control" }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "node_power": { "name": "Power" }
+    },
+    "binary_sensor": {
+      "holiday_mode": { "name": "Holiday mode" },
+      "connected": { "name": "Controller connection" }
+    }
+  }
+}

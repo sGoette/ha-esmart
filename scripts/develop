@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Start a local Home Assistant with this integration (http://localhost:8123).
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p config/custom_components
+ln -sfn "$PWD/custom_components/esmart" config/custom_components/esmart
+exec .venv/bin/hass -c config "$@"
