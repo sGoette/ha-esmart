@@ -50,7 +50,7 @@ Reverse-engineered from the eSmart web client (`eSDK.min.js` 2016, Strophe.js) a
 | 2 | Lampe | `onoff`, `power` (W) |
 | 3 | Lampe Dim. | `dimming` ("NN%"), `power` |
 | 4 | Store | `position` (0 = up/open … 1024 = down), `orientation` (0 = slats open … 1024 = closed, verified), `power`. `has_orientation=false` for the awning |
-| 6 | Heating | `temperature`, `setpoint`, `deviceOnOff` (older firmware: `onoff`), `power` |
+| 6 | Heating | `temperature`, `setpoint` (integer °C, 18..24 = the 7 panel levels, verified), `deviceOnOff` (heat demand: on while temperature < setpoint; older firmware: `onoff`), `power` |
 
 Meters in the data stream report instantaneous `power` (W) or `flow_rate` (unit unknown), plus one `temperature` entry. Cumulative counters (Wh, dL per the structure) are not in the stream.
 
