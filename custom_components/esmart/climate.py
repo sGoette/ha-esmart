@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -55,4 +56,6 @@ class ESmartHeating(ESmartNodeEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         if (temp := kwargs.get(ATTR_TEMPERATURE)) is not None:
-            await self._command(setpoint=round(min(self.max_temp, max(self.min_temp, float(temp)))))
+            # HomeKit only offers 0.5 steps; round half up (round() would make 22.5 -> 22 but 23.5 -> 24)
+            setpoint = math.floor(min(self.max_temp, max(self.min_temp, float(temp))) + 0.5)
+            await self._command(setpoint=setpoint)

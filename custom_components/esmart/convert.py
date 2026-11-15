@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 RAW_MAX = 1024  # eSmart blinds: position/orientation 0..1024
 
 # Node type ids seen in the structure message
@@ -58,3 +60,21 @@ def is_on(data: dict) -> bool | None:
     if value is None:
         return None
     return str(value).lower() == "on"
+
+
+POSITION_TOLERANCE = 16  # raw units of 1024; eSmart reports e.g. 286 after being sent 287
+
+
+def field_matches(key: str, sent: Any, reported: Any) -> bool:
+    """True if a value reported by eSmart confirms a value we sent."""
+    if reported is None:
+        return False
+    if key == "dimming":
+        return abs(parse_dimming(sent) - parse_dimming(reported)) <= 2
+    if key == "onoff":
+        return str(sent).lower() == str(reported).lower()
+    try:
+        tolerance = POSITION_TOLERANCE if key in ("position", "orientation") else 0.01
+        return abs(float(sent) - float(reported)) <= tolerance
+    except (TypeError, ValueError):
+        return sent == reported

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from homeassistant.components.cover import (
@@ -16,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import ESmartConfigEntry
 from .convert import (
+    POSITION_TOLERANCE,
     RAW_MAX,
     TYPE_BLIND,
     cover_position_to_raw,
@@ -24,6 +26,9 @@ from .convert import (
     tilt_to_raw,
 )
 from .entity import ESmartNodeEntity, nodes_of_type
+
+MOVE_TIMEOUT = 120  # s, longest plausible travel time
+STALL_SECONDS = 8  # position unchanged this long -> stopped (e.g. stopped on the panel)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ESmartConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
@@ -50,6 +55,49 @@ class ESmartCover(ESmartNodeEntity, CoverEntity):
     @property
     def current_cover_tilt_position(self) -> int | None:
         return raw_to_tilt(self.data.get("orientation")) if self._has_tilt else None
+
+    _target_raw: int | None = None
+    _target_until = 0.0
+    _last_raw: int | None = None
+    _last_move = 0.0
+
+    def _optimistic(self, fields: dict[str, Any]) -> dict[str, Any]:
+        # The position changes gradually while the motor runs. Instead of faking it, report
+        # opening/closing until the target is reached, so HomeKit keeps its target slider.
+        if "position" in fields:
+            self._target_raw = int(fields["position"])
+            now = time.monotonic()
+            self._target_until = now + MOVE_TIMEOUT
+            self._last_move = now
+        return {k: v for k, v in fields.items() if k != "position"}
+
+    def _direction(self) -> int:
+        """-1 opening (raw decreasing), +1 closing, 0 idle."""
+        live = self.client.nodes.get(self.node_id, {}).get("position")
+        if self._target_raw is None or live is None:
+            return 0
+        diff = self._target_raw - int(live)
+        if abs(diff) <= POSITION_TOLERANCE:
+            return 0
+        return 1 if diff > 0 else -1
+
+    def _on_update(self, changed: set[int] | None) -> None:
+        if self._target_raw is not None:
+            now = time.monotonic()
+            live = self.client.nodes.get(self.node_id, {}).get("position")
+            if live != self._last_raw:
+                self._last_raw, self._last_move = live, now
+            if self._direction() == 0 or now >= self._target_until or now - self._last_move >= STALL_SECONDS:
+                self._target_raw = None
+        super()._on_update(changed)
+
+    @property
+    def is_opening(self) -> bool:
+        return self._direction() < 0
+
+    @property
+    def is_closing(self) -> bool:
+        return self._direction() > 0
 
     @property
     def is_closed(self) -> bool | None:

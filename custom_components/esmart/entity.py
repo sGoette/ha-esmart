@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from homeassistant.exceptions import HomeAssistantError
@@ -10,6 +11,9 @@ from homeassistant.helpers.entity import Entity
 
 from .client import ESmartClient, ESmartError, ESmartNotAllowed, iter_nodes
 from .const import DOMAIN, MANUFACTURER
+from .convert import field_matches
+
+PENDING_SECONDS = 5  # show the requested value until eSmart confirms it, at most this long
 
 
 def apartment_device(client: ESmartClient) -> DeviceInfo:
@@ -79,9 +83,33 @@ class ESmartNodeEntity(ESmartEntity):
             suggested_area=room.get("name", "").strip() or None,
         )
 
+    _pending: dict[str, Any] | None = None
+    _pending_until = 0.0
+
     @property
     def data(self) -> dict[str, Any]:
-        return self.client.nodes.get(self.node_id, {})
+        """Live node data, overlaid with values we just sent until eSmart confirms them.
+
+        Right after a CMD the INFO stream still carries the old values for about a second;
+        without the overlay, HomeKit and the UI flip back to the old state and then forward again.
+        """
+        live = self.client.nodes.get(self.node_id, {})
+        if self._pending and time.monotonic() < self._pending_until:
+            return {**live, **self._pending}
+        return live
+
+    def _optimistic(self, fields: dict[str, Any]) -> dict[str, Any]:
+        """Fields to show immediately after sending them. Covers exclude the moving position."""
+        return fields
+
+    def _on_update(self, changed: set[int] | None) -> None:
+        if self._pending:
+            live = self.client.nodes.get(self.node_id, {})
+            if time.monotonic() >= self._pending_until or all(
+                field_matches(k, v, live.get(k)) for k, v in self._pending.items()
+            ):
+                self._pending = None
+        super()._on_update(changed)
 
     @property
     def available(self) -> bool:
@@ -107,3 +135,7 @@ class ESmartNodeEntity(ESmartEntity):
             ) from err
         except ESmartError as err:
             raise HomeAssistantError(str(err)) from err
+        if pending := self._optimistic(fields):
+            self._pending = {**(self._pending or {}), **pending}
+            self._pending_until = time.monotonic() + PENDING_SECONDS
+        self.async_write_ha_state()

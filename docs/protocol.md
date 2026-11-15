@@ -52,6 +52,11 @@ Reverse-engineered from the eSmart web client (`eSDK.min.js` 2016, Strophe.js) a
 | 4 | Store | `position` (0 = up/open … 1024 = down), `orientation` (0 = slats open … 1024 = closed, verified), `power`. `has_orientation=false` for the awning |
 | 6 | Heating | `temperature`, `setpoint` (integer °C, 18..24 = the 7 panel levels, verified), `deviceOnOff` (heat demand: on while temperature < setpoint; older firmware: `onoff`), `power` |
 
+Command behavior (verified):
+
+- Right after a `CMD`, the `INFO/data` stream still carries the old values for ~1 s; the new value arrives with `INFO/operation` or the next frames. Clients must not treat those stale frames as a state change (the integration overlays the sent values for up to 5 s, covers report opening/closing until the target is reached).
+- Out-of-range values (e.g. `setpoint` 25) are **silently ignored**: no error, the old value stays.
+
 Meters in the data stream report instantaneous `power` (W) or `flow_rate` (unit unknown), plus one `temperature` entry. Cumulative counters (Wh, dL per the structure) are not in the stream.
 
 ## Open questions
