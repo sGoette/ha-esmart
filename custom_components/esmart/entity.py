@@ -13,7 +13,7 @@ from .client import ESmartClient, ESmartError, ESmartNotAllowed, iter_nodes
 from .const import DOMAIN, MANUFACTURER
 from .convert import field_matches
 
-PENDING_SECONDS = 5  # show the requested value until eSmart confirms it, at most this long
+PENDING_SECONDS = 5  # default: show the requested value until eSmart confirms it, at most this long
 
 
 def apartment_device(client: ESmartClient) -> DeviceInfo:
@@ -85,6 +85,7 @@ class ESmartNodeEntity(ESmartEntity):
 
     _pending: dict[str, Any] | None = None
     _pending_until = 0.0
+    _pending_seconds = PENDING_SECONDS
 
     @property
     def data(self) -> dict[str, Any]:
@@ -104,7 +105,9 @@ class ESmartNodeEntity(ESmartEntity):
 
     def _on_update(self, changed: set[int] | None) -> None:
         if self._pending:
-            live = self.client.nodes.get(self.node_id, {})
+            # only the regular data stream counts as confirmation: INFO/operation may confirm
+            # first and the following data frames still carry the old value (seen on heating)
+            live = self.client.stream_nodes.get(self.node_id, {})
             if time.monotonic() >= self._pending_until or all(
                 field_matches(k, v, live.get(k)) for k, v in self._pending.items()
             ):
@@ -137,5 +140,5 @@ class ESmartNodeEntity(ESmartEntity):
             raise HomeAssistantError(str(err)) from err
         if pending := self._optimistic(fields):
             self._pending = {**(self._pending or {}), **pending}
-            self._pending_until = time.monotonic() + PENDING_SECONDS
+            self._pending_until = time.monotonic() + self._pending_seconds
         self.async_write_ha_state()

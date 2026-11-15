@@ -29,6 +29,7 @@ def make(cls, node, data, allowed=True):
 def stream(c, e, nid, data):
     """Simulate an INFO/data frame for one node reaching the entity."""
     c.nodes[nid] = data
+    c.stream_nodes[nid] = data
     e._on_update({nid})
 
 
@@ -134,3 +135,18 @@ def test_cover_motion_stops_when_position_stalls(monkeypatch):
     now[0] += cover.STALL_SECONDS + 0.1  # stopped on the panel at 300
     stream(c, e, 65, {"position": 300})
     assert not e.is_closing
+
+
+def test_heating_operation_confirm_then_stale_data_does_not_flip():
+    """Seen live: 24 -> 23.5 showed 23, then 24 again, then 23."""
+    c, e = make(ESmartHeating, {"id": 25, "type_id": 6}, {"setpoint": 24, "temperature": 23})
+    c.stream_nodes[25] = {"setpoint": 24, "temperature": 23}
+    c.add_listener(e._on_update)
+    run(e.async_set_temperature(temperature=23.5))
+    assert e.target_temperature == 23
+    c._handle_info({"method": "INFO", "type": "operation"}, {"operation": {"id": 25, "setpoint": 23}})
+    assert e.target_temperature == 23 and e._pending  # confirmation alone does not end the overlay
+    c._handle_info({"method": "INFO", "type": "data"}, {"nodes": [{"id": 25, "data": {"setpoint": 24, "temperature": 23}}], "meters": []})
+    assert e.target_temperature == 23  # stale frame ignored
+    c._handle_info({"method": "INFO", "type": "data"}, {"nodes": [{"id": 25, "data": {"setpoint": 23, "temperature": 23}}], "meters": []})
+    assert e.target_temperature == 23 and e._pending is None

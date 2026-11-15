@@ -35,6 +35,7 @@ class ESmartHeating(ESmartNodeEntity, ClimateEntity):
     _attr_target_temperature_step = 1
     _attr_min_temp = 18
     _attr_max_temp = 24
+    _pending_seconds = 30  # the heating controller takes over a new setpoint more slowly than lights
 
     @property
     def native_current_temperature(self) -> float | None:

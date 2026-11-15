@@ -148,6 +148,9 @@ class ESmartClient:
         self.structure: dict[str, Any] | None = None
         self.scenes: list[dict[str, Any]] = []
         self.nodes: dict[int, dict[str, Any]] = {}
+        # node data exactly as last seen in INFO/data (without INFO/operation merged in);
+        # INFO/operation can confirm a value before the data stream has caught up
+        self.stream_nodes: dict[int, dict[str, Any]] = {}
         self.meters: list[dict[str, Any]] = []
         self.extra: dict[str, Any] = {}  # holiday_mode, valves_state, ...
         self.last_data: float | None = None
@@ -423,6 +426,7 @@ class ESmartClient:
             changed: set[int] = set()
             for node in body.get("nodes", []):
                 nid = int(node["id"])
+                self.stream_nodes[nid] = node.get("data") or {}
                 if self.nodes.get(nid) != node.get("data"):
                     self.nodes[nid] = node.get("data") or {}
                     changed.add(nid)

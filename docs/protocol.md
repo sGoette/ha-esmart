@@ -54,7 +54,7 @@ Reverse-engineered from the eSmart web client (`eSDK.min.js` 2016, Strophe.js) a
 
 Command behavior (verified):
 
-- Right after a `CMD`, the `INFO/data` stream still carries the old values for ~1 s; the new value arrives with `INFO/operation` or the next frames. Clients must not treat those stale frames as a state change (the integration overlays the sent values for up to 5 s, covers report opening/closing until the target is reached).
+- Right after a `CMD`, `INFO/operation` confirms the new value within ~50 ms, but `INFO/data` frames can still carry the old value afterwards (lights: rarely; heating setpoint: observed in HomeKit). Clients must not treat those stale frames as a state change. The integration overlays the sent values until `INFO/data` itself reports them (max 5 s, heating 30 s); covers report opening/closing until the target is reached.
 - Out-of-range values (e.g. `setpoint` 25) are **silently ignored**: no error, the old value stays.
 
 Meters in the data stream report instantaneous `power` (W) or `flow_rate` (unit unknown), plus one `temperature` entry. Cumulative counters (Wh, dL per the structure) are not in the stream.
