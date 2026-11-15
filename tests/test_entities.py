@@ -82,18 +82,20 @@ def test_dimmer_optimistic_brightness():
     assert e.is_on is True
 
 
-def test_heating_rounds_half_up_and_clamps():
-    c, e = make(ESmartHeating, {"id": 25, "type_id": 6}, {"setpoint": 18, "temperature": 21})
+def test_heating_rounds_in_direction_of_change_and_clamps():
+    c, e = make(ESmartHeating, {"id": 25, "type_id": 6}, {"setpoint": 23, "temperature": 21})
     sent = []
 
     async def capture(node_id, **fields):
         sent.append(fields["setpoint"])
 
     c.command = capture
-    for value in (22.5, 23.5, 30, 10, 21.4):
+    # each step starts from the value shown after the previous one (optimistic overlay)
+    steps = [(22.5, 22), (22.5, 23), (23.5, 24), (23.5, 23), (30, 24), (10, 18), (18.5, 19), (19.4, 20), (19.6, 19)]
+    for value, expected in steps:
         run(e.async_set_temperature(temperature=value))
-    assert sent == [23, 24, 24, 18, 21]
-    assert e.target_temperature == 21  # last value shown immediately
+        assert sent[-1] == expected, (value, sent)
+        assert e.target_temperature == expected  # shown immediately
 
 
 def test_cover_reports_motion_until_target_reached():

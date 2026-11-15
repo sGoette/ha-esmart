@@ -56,6 +56,20 @@ class ESmartHeating(ESmartNodeEntity, ClimateEntity):
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         if (temp := kwargs.get(ATTR_TEMPERATURE)) is not None:
-            # HomeKit only offers 0.5 steps; round half up (round() would make 22.5 -> 22 but 23.5 -> 24)
-            setpoint = math.floor(min(self.max_temp, max(self.min_temp, float(temp))) + 0.5)
-            await self._command(setpoint=setpoint)
+            await self._command(setpoint=self._to_setpoint(float(temp)))
+
+    def _to_setpoint(self, temp: float) -> int:
+        """Whole degree within the panel range, rounded in the direction the user moved.
+
+        HomeKit offers 0.5 °C steps. Going down from 23 to 22.5 must give 22 (not snap back
+        to 23), going up from 22 to 22.5 must give 23.
+        """
+        temp = min(self.max_temp, max(self.min_temp, temp))
+        current = self.target_temperature
+        if current is None or temp == current:
+            setpoint = math.floor(temp + 0.5)
+        elif temp < current:
+            setpoint = math.floor(temp)
+        else:
+            setpoint = math.ceil(temp)
+        return int(min(self.max_temp, max(self.min_temp, setpoint)))
