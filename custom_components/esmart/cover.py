@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 from typing import Any
 
@@ -21,6 +22,7 @@ from .convert import (
     RAW_MAX,
     TYPE_BLIND,
     cover_position_to_raw,
+    field_matches,
     raw_to_cover_position,
     raw_to_tilt,
     tilt_to_raw,
@@ -29,6 +31,7 @@ from .entity import ESmartNodeEntity, nodes_of_type
 
 MOVE_TIMEOUT = 120  # s, longest plausible travel time
 STALL_SECONDS = 8  # position unchanged this long -> stopped (e.g. stopped on the panel)
+TILT_DEBOUNCE = 0.7  # s the tilt slider must rest before the angle is sent to eSmart
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ESmartConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
@@ -52,9 +55,19 @@ class ESmartCover(ESmartNodeEntity, CoverEntity):
     def current_cover_position(self) -> int | None:
         return raw_to_cover_position(self.data.get("position"))
 
+    _tilt_sent: int | None = None  # last orientation we requested
+    _tilt_seq = 0  # bumped by every tilt/position request; a debounced tilt only sends if still latest
+
     @property
     def current_cover_tilt_position(self) -> int | None:
-        return raw_to_tilt(self.data.get("orientation")) if self._has_tilt else None
+        if not self._has_tilt:
+            return None
+        raw = self.data.get("orientation")
+        # eSmart reports e.g. 419 after being sent 420; keep showing the requested angle so the
+        # HomeKit slider does not jump back a step after release
+        if self._tilt_sent is not None and field_matches("orientation", self._tilt_sent, raw):
+            raw = self._tilt_sent
+        return raw_to_tilt(raw)
 
     _target_raw: int | None = None
     _target_until = 0.0
@@ -105,10 +118,20 @@ class ESmartCover(ESmartNodeEntity, CoverEntity):
         return None if pos is None else pos == 0
 
     async def _set(self, position_raw: int, orientation_raw: int | None = None) -> None:
+        self._tilt_seq += 1  # supersedes a tilt still waiting in its debounce
         fields: dict[str, Any] = {"position": position_raw}
         if self._has_tilt:
-            fields["orientation"] = orientation_raw if orientation_raw is not None else int(self.data.get("orientation", 0))
+            if orientation_raw is None:
+                # Like the wall switch: fully up turns the slats horizontal (0), fully down
+                # vertical (RAW_MAX). In between, keep the current angle.
+                if position_raw in (0, RAW_MAX):
+                    orientation_raw = position_raw
+                else:
+                    orientation_raw = int(self.data.get("orientation", 0))
+            fields["orientation"] = orientation_raw
         await self._command(**fields)
+        if self._has_tilt:
+            self._tilt_sent = orientation_raw
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         await self._set(0)
@@ -120,4 +143,18 @@ class ESmartCover(ESmartNodeEntity, CoverEntity):
         await self._set(cover_position_to_raw(kwargs[ATTR_POSITION]))
 
     async def async_set_cover_tilt_position(self, **kwargs: Any) -> None:
-        await self._set(int(self.data.get("position", 0)), tilt_to_raw(kwargs[ATTR_TILT_POSITION]))
+        # HomeKit sends a value for every step while the slider is dragged. Show it right away,
+        # but only send the last one, once the slider has rested for TILT_DEBOUNCE seconds.
+        orientation_raw = tilt_to_raw(kwargs[ATTR_TILT_POSITION])
+        if self.node_id not in self.client.allowed_nodes:
+            await self._set(int(self.data.get("position", 0)), orientation_raw)  # raises "not switchable"
+            return
+        self._tilt_seq += 1
+        seq = self._tilt_seq
+        self._pending = {**(self._pending or {}), "orientation": orientation_raw}
+        self._pending_until = time.monotonic() + self._pending_seconds + TILT_DEBOUNCE
+        self.async_write_ha_state()
+        await asyncio.sleep(TILT_DEBOUNCE)
+        if seq != self._tilt_seq:
+            return  # a newer slider value (or open/close) replaced this one
+        await self._set(int(self.data.get("position", 0)), orientation_raw)

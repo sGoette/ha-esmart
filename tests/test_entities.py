@@ -122,6 +122,117 @@ def test_cover_tilt_shown_immediately_without_motion():
     assert e.current_cover_tilt_position == 100
 
 
+def test_cover_full_open_close_moves_slats_to_extremes():
+    node = {"id": 65, "type_id": 4, "has_orientation": True}
+    c, e = make(ESmartCover, node, {"position": 512, "orientation": 419})
+    sent = []
+
+    async def capture(node_id, **fields):
+        sent.append(fields)
+
+    c.command = capture
+    run(e.async_set_cover_position(position=25))  # in between: keep current angle
+    run(e.async_close_cover())
+    run(e.async_open_cover())
+    run(e.async_set_cover_position(position=0))
+    run(e.async_set_cover_position(position=100))
+    run(e.async_set_cover_position(position=50))  # keeps the angle the open just set
+    assert sent == [
+        {"position": 768, "orientation": 419},
+        {"position": 1024, "orientation": 1024},
+        {"position": 0, "orientation": 0},
+        {"position": 1024, "orientation": 1024},
+        {"position": 0, "orientation": 0},
+        {"position": 512, "orientation": 0},
+    ]
+
+
+def test_cover_tilt_only_keeps_position_even_at_extremes():
+    node = {"id": 65, "type_id": 4, "has_orientation": True}
+    c, e = make(ESmartCover, node, {"position": 1024, "orientation": 1024})
+    sent = []
+
+    async def capture(node_id, **fields):
+        sent.append(fields)
+
+    c.command = capture
+    run(e.async_set_cover_tilt_position(tilt_position=59))
+    assert sent == [{"position": 1024, "orientation": 420}]
+
+
+def test_cover_tilt_drag_sends_only_last_value(monkeypatch):
+    from custom_components.esmart import cover
+
+    monkeypatch.setattr(cover, "TILT_DEBOUNCE", 0.05)
+    node = {"id": 65, "type_id": 4, "has_orientation": True}
+    c, e = make(ESmartCover, node, {"position": 1024, "orientation": 1024})
+    sent = []
+
+    async def capture(node_id, **fields):
+        sent.append(fields)
+
+    c.command = capture
+
+    async def drag():
+        tasks = []
+        for tilt in (10, 20, 30, 59):  # HomeKit slider steps while dragging
+            tasks.append(asyncio.create_task(e.async_set_cover_tilt_position(tilt_position=tilt)))
+            await asyncio.sleep(0.01)
+            assert e.current_cover_tilt_position == tilt  # shown immediately
+        await asyncio.gather(*tasks)
+
+    run(drag())
+    assert sent == [{"position": 1024, "orientation": 420}]
+    stream(c, e, 65, {"position": 1024, "orientation": 419})  # eSmart's rounding
+    assert e.current_cover_tilt_position == 59  # no jump back
+    stream(c, e, 65, {"position": 1024, "orientation": 800})  # changed on the panel later
+    assert e.current_cover_tilt_position == 22
+
+
+def test_cover_open_cancels_waiting_tilt(monkeypatch):
+    from custom_components.esmart import cover
+
+    monkeypatch.setattr(cover, "TILT_DEBOUNCE", 0.05)
+    node = {"id": 65, "type_id": 4, "has_orientation": True}
+    c, e = make(ESmartCover, node, {"position": 1024, "orientation": 1024})
+    sent = []
+
+    async def capture(node_id, **fields):
+        sent.append(fields)
+
+    c.command = capture
+
+    async def go():
+        t = asyncio.create_task(e.async_set_cover_tilt_position(tilt_position=50))
+        await asyncio.sleep(0.01)
+        await e.async_open_cover()
+        await t
+
+    run(go())
+    assert sent == [{"position": 0, "orientation": 0}]
+
+
+def test_cover_tilt_refused_immediately_when_not_switchable():
+    node = {"id": 65, "type_id": 4, "has_orientation": True}
+    c, e = make(ESmartCover, node, {"position": 1024, "orientation": 1024}, allowed=False)
+    with pytest.raises(Exception):
+        run(e.async_set_cover_tilt_position(tilt_position=50))
+    assert e._pending is None and e.current_cover_tilt_position == 0
+
+
+def test_awning_sends_no_orientation():
+    node = {"id": 97, "type_id": 4, "has_orientation": False}
+    c, e = make(ESmartCover, node, {"position": 512, "orientation": 0})
+    sent = []
+
+    async def capture(node_id, **fields):
+        sent.append(fields)
+
+    c.command = capture
+    run(e.async_close_cover())
+    assert sent == [{"position": 1024}]
+
+
 def test_cover_motion_stops_when_position_stalls(monkeypatch):
     from custom_components.esmart import cover
 

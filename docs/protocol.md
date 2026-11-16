@@ -56,6 +56,7 @@ Command behavior (verified):
 
 - Right after a `CMD`, `INFO/operation` confirms the new value within ~50 ms, but `INFO/data` frames can still carry the old value afterwards (lights: rarely; heating setpoint: observed in HomeKit). Clients must not treat those stale frames as a state change. The integration overlays the sent values until `INFO/data` itself reports them (max 5 s, heating 30 s); covers report opening/closing until the target is reached.
 - Out-of-range values (e.g. `setpoint` 25) are **silently ignored**: no error, the old value stays.
+- Blind slats (verified 2026-11-16): `orientation` is continuous 0..1024 (0 = horizontal, 1024 = vertical; ~420 looks about half-turned) and changes independently of `position`. The wall switch's "all the way" press sets both ends together: up → `position` 0 / `orientation` 0, down → 1024 / 1024. The integration does the same on full open/close; intermediate positions keep the current angle. Values sent while the motor runs can be intermediate (e.g. orientation 430 during a full close).
 
 Meters in the data stream report instantaneous `power` (W) or `flow_rate` (unit unknown), plus one `temperature` entry. Cumulative counters (Wh, dL per the structure) are not in the stream.
 
