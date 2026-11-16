@@ -9,3 +9,4 @@ config/*
 spike/node_modules/
 spike/captures/
 spike/logs/
+.DS_Store
