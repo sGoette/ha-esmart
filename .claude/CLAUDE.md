@@ -8,7 +8,7 @@ The user does not work for eSmart. The repo is public on GitHub and installable 
 
 - Never commit personal or apartment data: credentials, JIDs, apartment/controller ids, room/node/door names, addresses, pairing codes, IPs, logs, captures, `config/` (HA storage). Use placeholders in docs and generic names in tests.
 - Before every push, check the diff (and new files) for such data.
-- Bump `version` in `manifest.json` for each user-facing change; HACS uses it.
+- Bump `version` in `manifest.json` for each user-facing change (semver). On push to `main`, `.github/workflows/release.yml` creates release `v<version>` from it; HACS offers that as an update. Never create tags or releases by hand.
 
 ## HARD RULE: only switch eSmart devices the user has explicitly declared
 

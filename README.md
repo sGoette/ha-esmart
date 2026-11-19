@@ -75,6 +75,12 @@ python3 -m venv .venv && .venv/bin/pip install homeassistant slixmpp pytest
 ./scripts/develop                        # HA on http://localhost:8123 with the integration linked in
 ```
 
+### Releases
+
+The version in `custom_components/esmart/manifest.json` is the source of truth. When a push to `main` raises it,
+the GitHub Action `.github/workflows/release.yml` creates the tag and release `v<version>` (notes = commit
+messages since the previous release). HACS then offers the update in Home Assistant.
+
 ### Protocol test client (`spike/`)
 
 Standalone Node client for checking whether eSmart changed its protocol. Credentials (`.esmart-test.json`),
