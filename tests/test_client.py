@@ -103,3 +103,70 @@ def test_conversions():
     assert convert.is_on({"deviceOnOff": "on"}) is True
     assert convert.is_on({"onoff": "off"}) is False
     assert convert.is_on({}) is None
+
+
+# --------------------------------------------------------------------------- doors
+
+
+def door_client(allow_doors=True):
+    c = make_client()
+    c.allow_doors = allow_doors
+    c._handle_info({"method": "INFO", "type": "doors"}, {"doors": [{"id": 0, "name": "Haupteingang"}]})
+    return c
+
+
+def test_doors_list_parsed():
+    assert door_client().doors == {0: "Haupteingang"}
+
+
+def test_door_blocked_by_default():
+    c = door_client(allow_doors=False)
+    with pytest.raises(ESmartNotAllowed):
+        run(c.open_door(0))
+    assert c._xmpp.sent == []
+
+
+def test_unknown_door_blocked():
+    c = door_client()
+    with pytest.raises(ESmartNotAllowed):
+        run(c.open_door(1))
+    assert c._xmpp.sent == []
+
+
+def test_door_choke_point_only_allows_exact_pulse():
+    c = door_client()
+    for body in ({"id": 0, "action": "open"}, {"id": 0, "action": "pulse", "x": 1}, {"id": 5, "action": "pulse"}, {"id": "0", "action": "pulse"}):
+        with pytest.raises(ESmartNotAllowed):
+            c._send_room("CMD", "door", body)
+    with pytest.raises(ESmartNotAllowed):
+        door_client(allow_doors=False)._send_room("CMD", "door", {"id": 0, "action": "pulse"})
+    assert c._xmpp.sent == []
+
+
+def test_operation_choke_point_checks_allow_list():
+    c = make_client(allowed=[41])
+    with pytest.raises(ESmartNotAllowed):
+        c._send_room("CMD", "operation", {"id": 33, "onoff": "on"})
+    assert c._xmpp.sent == []
+
+
+def test_open_door_sends_pulse_and_waits_for_confirmation():
+    c = door_client()
+
+    async def go():
+        task = asyncio.create_task(c.open_door(0, timeout=2))
+        await asyncio.sleep(0.05)
+        c._handle_info({"method": "INFO", "type": "door"}, {"id": 0})
+        await task
+
+    run(go())
+    (to, msg, _), = c._xmpp.sent
+    assert msg["headers"]["method"] == "CMD" and msg["headers"]["type"] == "door"
+    assert msg["body"] == {"id": 0, "action": "pulse"}
+
+
+def test_open_door_without_confirmation_times_out():
+    c = door_client()
+    with pytest.raises(ESmartError):
+        run(c.open_door(0, timeout=0.05))
+    assert c._door_waiters.get(0) == []

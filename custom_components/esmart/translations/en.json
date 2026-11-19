@@ -12,11 +12,16 @@
       "pair": {
         "title": "Pair with your eSmart apartment",
         "description": "A new remote device was registered as `{jid}` and is connected.\n\nOn your eSmart panel, create a pairing code for a new remote device and enter it here right away (codes expire quickly).",
-        "data": { "code": "Pairing code" }
+        "data": {
+          "code": "Pairing code"
+        }
       },
       "credentials": {
         "title": "Existing eSmart device",
-        "data": { "jid": "JID (w-…@myesmart.net)", "password": "Password" }
+        "data": {
+          "jid": "JID (w-…@myesmart.net)",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -34,19 +39,28 @@
   "options": {
     "step": {
       "init": {
-        "title": "Switchable devices",
-        "description": "By default the integration is read-only. Only the devices selected here can be switched from Home Assistant. Leave out sockets that power other equipment. Scenes and holiday mode are never controlled.",
-        "data": { "switchable_nodes": "Devices Home Assistant may control" }
+        "title": "Control",
+        "description": "By default the integration is read-only. Only the devices selected here can be switched from Home Assistant. Leave out sockets that power other equipment. Scenes and holiday mode are never controlled.\n\nDoor opening adds a lock per door that releases the door opener, like the door button in the eSmart app. The lock shows “unlocked” for a few seconds after opening; locking does nothing, the door closes by itself. Doors: {doors}.",
+        "data": {
+          "switchable_nodes": "Devices Home Assistant may control",
+          "door_opening": "Allow opening doors"
+        }
       }
     }
   },
   "entity": {
     "sensor": {
-      "node_power": { "name": "Power" }
+      "node_power": {
+        "name": "Power"
+      }
     },
     "binary_sensor": {
-      "holiday_mode": { "name": "Holiday mode" },
-      "connected": { "name": "Controller connection" }
+      "holiday_mode": {
+        "name": "Holiday mode"
+      },
+      "connected": {
+        "name": "Controller connection"
+      }
     }
   }
 }

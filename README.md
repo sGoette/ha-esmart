@@ -1,6 +1,6 @@
 # ha-esmart
 
-Unofficial Home Assistant integration for eSmart (myesmart.com) apartments. **Private, not for distribution.**
+Unofficial Home Assistant integration for eSmart (myesmart.com) apartments. Not affiliated with or endorsed by eSmart. It uses the same reverse-engineered protocol as the eSmart app, which eSmart may change at any time. Use at your own risk.
 
 Home Assistant connects as its own paired remote device, like the eSmart app, over XMPP. No browser and no eSmart JavaScript are needed.
 
@@ -14,12 +14,15 @@ Home Assistant connects as its own paired remote device, like the eSmart app, ov
 | Per-device power | `sensor` (W, diagnostic) |
 | Apartment meters | `sensor` (W, flow, temperature) |
 | Holiday mode, connection | `binary_sensor` (read-only) |
+| Building door opener | `lock` per door (opt-in, see below) |
 
 Devices are created automatically from the apartment structure, with rooms as areas.
 
 ## Safety: read-only by default
 
 Nothing can be switched until you select devices under **Settings → Devices & services → eSmart → Configure**. Leave out sockets that power other equipment. Scenes and holiday mode are never controlled by this integration.
+
+**Door opener (opt-in):** if you tick **Allow opening doors** in the same dialog, every door your eSmart system knows (e.g. the building entrance) appears as a `lock`. Unlocking releases the door opener, like the door button in the eSmart app; the lock shows "unlocked" for 10 s and then "locked" (ready) again. Locking does nothing, the door closes by itself. Through the HomeKit Bridge it shows up in Apple Home as a lock (Face ID required on the lock screen, Siri "Unlock …").
 
 ## Install (e.g. Home Assistant OS in a TrueNAS Scale VM)
 
@@ -29,13 +32,18 @@ Nothing can be switched until you select devices under **Settings → Devices & 
 - **Internet access**: on first start Home Assistant installs the `slixmpp` library from PyPI, and the integration connects out to `xmpp.myesmart.net` on TCP port 5222. No incoming ports are needed.
 - **eSmart panel nearby**: pairing codes expire quickly.
 
-### 1. Copy the integration
+### 1. Install via HACS (recommended, enables updates from the UI)
 
-Copy the folder `custom_components/esmart` from this repo to `/config/custom_components/esmart` on the Home Assistant machine, then restart Home Assistant.
+1. Install [HACS](https://hacs.xyz) if you don't have it yet.
+2. **HACS → ⋮ → Custom repositories**: repository `https://github.com/sGoette/ha-esmart`, type **Integration** → Add.
+3. Search for **eSmart** in HACS → **Download**, then restart Home Assistant.
 
-On Home Assistant OS, the easiest ways are the **Samba share** add-on (Mac: Finder → Go → Connect to Server → `smb://homeassistant.local/config`; Windows: `\\homeassistant\config`) or the **Terminal & SSH** add-on (`scp -r`). HACS is not used, because this repo is private.
+**Updating later**: when a new version is available, Home Assistant shows it under **Settings → Updates** (and in HACS). Click **Update**, then restart.
 
-**Updating later**: copy the folder again (replace the old one) and restart.
+<details><summary>Manual install without HACS</summary>
+
+Copy the folder `custom_components/esmart` from this repo to `/config/custom_components/esmart` on the Home Assistant machine (e.g. via the **Samba share** or **Terminal & SSH** add-on), then restart Home Assistant. To update, copy the folder again and restart.
+</details>
 
 ### 2. Add and pair
 

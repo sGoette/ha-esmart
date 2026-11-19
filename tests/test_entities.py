@@ -261,3 +261,70 @@ def test_heating_operation_confirm_then_stale_data_does_not_flip():
     assert e.target_temperature == 23  # stale frame ignored
     c._handle_info({"method": "INFO", "type": "data"}, {"nodes": [{"id": 25, "data": {"setpoint": 23, "temperature": 23}}], "meters": []})
     assert e.target_temperature == 23 and e._pending is None
+
+
+# --------------------------------------------------------------------------- door lock
+
+from custom_components.esmart import lock as door_lock  # noqa: E402
+
+from .test_client import door_client  # noqa: E402
+
+
+def make_lock(monkeypatch, allow_doors=True):
+    c = door_client(allow_doors=allow_doors)
+    e = door_lock.ESmartDoorLock(c, 0)
+    e.async_write_ha_state = lambda: None
+    e.hass = None
+    calls = []
+    monkeypatch.setattr(door_lock, "async_call_later", lambda hass, s, cb: calls.append(s) or (lambda: None))
+    return c, e, calls
+
+
+def confirm_soon(c):
+    async def _c():
+        await asyncio.sleep(0.02)
+        c._handle_info({"method": "INFO", "type": "door"}, {"id": 0})
+    return asyncio.ensure_future(_c())
+
+
+def test_door_lock_unlock_pulses_then_relocks(monkeypatch):
+    c, e, calls = make_lock(monkeypatch)
+    assert e.is_locked
+
+    async def go():
+        confirm_soon(c)
+        await e.async_unlock()
+
+    run(go())
+    assert c._xmpp.sent[-1][1]["body"] == {"id": 0, "action": "pulse"}
+    assert not e.is_locked and not e.is_unlocking and calls == [door_lock.UNLOCKED_SECONDS]
+    import time as _time
+    from types import SimpleNamespace
+    later = _time.monotonic() + door_lock.UNLOCKED_SECONDS
+    monkeypatch.setattr(door_lock, "time", SimpleNamespace(monotonic=lambda: later))
+    assert e.is_locked
+
+
+def test_door_lock_lock_sends_nothing(monkeypatch):
+    c, e, _ = make_lock(monkeypatch)
+    e._unlocked_until = float("inf")
+    run(e.async_lock())
+    assert e.is_locked and c._xmpp.sent == []
+
+
+def test_door_lock_refused_without_opt_in(monkeypatch):
+    c, e, _ = make_lock(monkeypatch, allow_doors=False)
+    with pytest.raises(Exception):
+        run(e.async_unlock())
+    assert e.is_locked and c._xmpp.sent == []
+
+
+def test_door_lock_stays_locked_without_confirmation(monkeypatch):
+    c, e, _ = make_lock(monkeypatch)
+    async def failing(door_id):
+        raise door_lock.ESmartError("no confirmation")
+
+    monkeypatch.setattr(c, "open_door", failing)
+    with pytest.raises(Exception):
+        run(e.async_unlock())
+    assert e.is_locked and not e.is_unlocking

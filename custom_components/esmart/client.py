@@ -5,9 +5,10 @@ Protocol summary (see docs/protocol.md):
 - After login the apartment controller ("master") invites us into its MUC room.
 - All traffic is JSON in groupchat bodies: {"headers": {...}, "body": {...}}.
 
-SAFETY: `ESmartClient.command` is the only code path that sends CMD messages. It only
-allows `operation` commands for node ids in `allowed_nodes`. Scenes and tablet operations
-are never sent by this client.
+SAFETY: `_send_room` is the single choke point for everything sent to the controller.
+CMD/operation only for node ids in `allowed_nodes` (via `command`); CMD/door only as
+{"id": <door from GET/doors>, "action": "pulse"} and only when `allow_doors` is set (via
+`open_door`). Scenes and tablet operations are never sent by this client.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ PAIRING_ROOM = f"shared@conference.{DOMAIN}"
 PROTOCOL_VERSION = "1.2.0"
 MUC_NS = "http://jabber.org/protocol/muc"
 
+DOOR_CONFIRM_TIMEOUT = 10  # seconds to wait for INFO/door after CMD/door
 DATA_TIMEOUT = 60  # seconds without a data message before we reconnect
 INVITE_TIMEOUT = 60  # seconds after login without an invitation before we reconnect
 
@@ -134,6 +136,7 @@ class ESmartClient:
         jid: str,
         password: str,
         allowed_nodes: Iterable[int] = (),
+        allow_doors: bool = False,
         device_name: str = "Home Assistant",
         ssl_context: ssl.SSLContext | None = None,
     ) -> None:
@@ -143,10 +146,13 @@ class ESmartClient:
         self.nick = jid.split("@", 1)[0]
         self.device_name = device_name
         self.allowed_nodes: set[int] = {int(n) for n in allowed_nodes}
+        self.allow_doors = bool(allow_doors)
 
         self.room: str | None = None
         self.structure: dict[str, Any] | None = None
         self.scenes: list[dict[str, Any]] = []
+        self.doors: dict[int, str] = {}  # door id -> name, from GET/doors
+        self._door_waiters: dict[int, list[asyncio.Future]] = {}
         self.nodes: dict[int, dict[str, Any]] = {}
         # node data exactly as last seen in INFO/data (without INFO/operation merged in);
         # INFO/operation can confirm a value before the data stream has caught up
@@ -165,6 +171,7 @@ class ESmartClient:
         self._in_room = asyncio.Event()
         self._structure_evt = asyncio.Event()
         self._data_evt = asyncio.Event()
+        self._doors_evt = asyncio.Event()
         self._auth_failed = False
 
     # ------------------------------------------------------------------ public api
@@ -219,6 +226,13 @@ class ESmartClient:
         await self._wait(self._structure_evt, max(1, deadline - time.monotonic()), "structure")
         await self._wait(self._data_evt, max(1, deadline - time.monotonic()), "data")
 
+    async def wait_doors(self, timeout: float = 10) -> None:
+        """Wait for the door list (INFO/doors)."""
+        if not self._doors_evt.is_set():
+            with contextlib.suppress(ESmartError):
+                self._send_room("GET", "doors", {})
+        await self._wait(self._doors_evt, timeout, "door list")
+
     async def request(self, type_: str, body: dict[str, Any] | None = None) -> None:
         """Send a read-only GET request (structure, scene, config, capabilities, data, history)."""
         self._send_room("GET", type_, body or {})
@@ -234,6 +248,31 @@ class ESmartClient:
         if not fields:
             raise ValueError("no fields")
         self._send_room("CMD", "operation", {"id": node_id, **fields})
+
+    async def open_door(self, door_id: int, timeout: float = DOOR_CONFIRM_TIMEOUT) -> None:
+        """Pulse the door opener (like the door button in the app) and wait for INFO/door.
+
+        Refused unless door opening is enabled in the options and the door is in GET/doors.
+        """
+        door_id = int(door_id)
+        if not self.allow_doors:
+            _LOGGER.warning("refused CMD/door for door %s (door opening not enabled)", door_id)
+            raise ESmartNotAllowed("door opening is not enabled (integration options)")
+        if door_id not in self.doors:
+            raise ESmartNotAllowed(f"unknown eSmart door {door_id}")
+        fut: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._door_waiters.setdefault(door_id, []).append(fut)
+        try:
+            self._send_room("CMD", "door", {"id": door_id, "action": "pulse"})
+            _LOGGER.info("eSmart door %s (%s) opened", door_id, self.doors[door_id])
+            try:
+                await asyncio.wait_for(fut, timeout)
+            except asyncio.TimeoutError as err:
+                raise ESmartTimeout(f"no confirmation from the controller for door {door_id}") from err
+        finally:
+            waiters = self._door_waiters.get(door_id, [])
+            if fut in waiters:
+                waiters.remove(fut)
 
     async def send_pair_code(self, code: str | int, timeout: float = 30) -> None:
         """Pair this account with the apartment using the code shown on the eSmart panel."""
@@ -269,8 +308,21 @@ class ESmartClient:
                 _LOGGER.exception("listener failed")
 
     def _send_room(self, method: str, type_: str, body: dict[str, Any]) -> None:
-        if method == "CMD" and type_ != "operation":
-            raise ESmartNotAllowed(f"CMD/{type_} is never sent by this client")
+        if method == "CMD":
+            if type_ == "operation":
+                if int(body.get("id", -1)) not in self.allowed_nodes:
+                    raise ESmartNotAllowed(f"eSmart node {body.get('id')} is not declared as switchable")
+            elif type_ == "door":
+                if not (
+                    self.allow_doors
+                    and set(body) == {"id", "action"}
+                    and body["action"] == "pulse"
+                    and isinstance(body["id"], int)
+                    and body["id"] in self.doors
+                ):
+                    raise ESmartNotAllowed(f"CMD/door {body} is not allowed")
+            else:
+                raise ESmartNotAllowed(f"CMD/{type_} is never sent by this client")
         if method not in ("GET", "CMD"):
             raise ESmartNotAllowed(f"method {method} is not supported")
         if not self._xmpp or not self.room:
@@ -415,6 +467,7 @@ class ESmartClient:
         with contextlib.suppress(ESmartError):
             self._send_room("GET", "structure", {})
             self._send_room("GET", "scene", {})
+            self._send_room("GET", "doors", {})
 
     def _handle_info(self, headers: dict[str, Any], body: Any) -> None:
         method, type_ = headers.get("method"), headers.get("type")
@@ -453,6 +506,18 @@ class ESmartClient:
             self._notify(None)
         elif type_ == "scene":
             self.scenes = body.get("scenes", [])
+        elif type_ == "doors":
+            self.doors = {
+                int(d["id"]): str(d.get("name") or f"Door {d['id']}")
+                for d in body.get("doors", [])
+                if isinstance(d, dict) and "id" in d
+            }
+            self._doors_evt.set()
+            self._notify(None)
+        elif type_ == "door":
+            for fut in self._door_waiters.pop(int(body.get("id", -1)), []):
+                if not fut.done():
+                    fut.set_result(None)
 
 
 def iter_nodes(structure: dict[str, Any] | None):

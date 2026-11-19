@@ -1,6 +1,6 @@
 # eSmart protocol notes
 
-Reverse-engineered from the eSmart web client (`eSDK.min.js` 2016, Strophe.js) and verified live on 2026-11-14. Private, do not publish.
+Reverse-engineered from the eSmart web client (`eSDK.min.js` 2016, Strophe.js) and verified live on 2026-11-14. Unofficial; eSmart may change the protocol at any time.
 
 ## Transport
 
@@ -9,7 +9,6 @@ Reverse-engineered from the eSmart web client (`eSDK.min.js` 2016, Strophe.js) a
   - `5281/http-bind`: BOSH (used by the web client).
 - SASL: `PLAIN`, `DIGEST-MD5`, `X-OAUTH2`, `SCRAM-SHA-1` are advertised. **SCRAM-SHA-1 fails** with xmpp.js (`<bad-protocol/>`), so use `PLAIN` (safe under mandatory TLS).
 - In-band registration (XEP-0077) is open. The web client creates `w-<13 hex>-<10..99>@myesmart.net` with a random 32-hex password.
-- The web client stores `jid%password` AES-encrypted in localStorage `cred` (CryptoJS passphrase hardcoded in eSDK).
 
 ## Pairing
 
@@ -65,3 +64,15 @@ Meters in the data stream report instantaneous `power` (W) or `flow_rate` (unit 
 - The awning's position semantics: verify on the real awning. (Blind position and slat direction verified 2026-11-15.)
 - `flow_rate` unit.
 - Energy totals via `GET/data summary` or `GET/history`.
+
+## Intercom / door
+
+- Doorbell ring (tested 2026-11-19): the home room carries nothing for it. No new message type or field, only the regular `INFO/data` stream. The intercom seems to be a separate "videophone" system; eSmart only references it in config (`door_button_visible`, `lift_execution_if_door_opened_by_videophone`).
+- Door opening from the app (captured 2026-11-19): the app sends to the home room
+  `{"headers":{"method":"CMD","type":"door","to":"master",…},"body":{"id":0,"action":"pulse"}}`;
+  the box confirms ~1 s later with `INFO/door` `{"id":0}` addressed to the sender. `id` 0 is presumably the
+  building entrance (only door seen). The app (`version` 1.12.0) opens with `GET/config {"data":"tablet"}`,
+  `GET/structure`, `GET/capabilities`, `GET/data {"summary":"data"}`.
+- Door list: `GET/doors {}` → `INFO/doors {"doors":[{"id":0,"name":"<door name>"}]}` (verified 2026-11-19).
+  `GET/door`, `GET/videophone`, `GET/intercom` get no reply. Pairing carries no door info.
+- Other devices' messages to `master` in the room are visible to every occupant (that's how this was found).

@@ -4,6 +4,7 @@
 //   node esmart-test.mjs serve [port]      stay logged in, local web UI on http://127.0.0.1:8099 (default)
 //                                          to enter the pairing code; full XMPP traffic -> logs/
 //   node esmart-test.mjs listen [secs]     log in, join the home room, GET structure/config/…, print changes
+//   node esmart-test.mjs get <type> [json] [secs]   send one GET/<type> request, print replies
 //   node esmart-test.mjs unregister        delete the test account on the server
 //
 // SAFETY (see .claude/CLAUDE.md): sendToHome() allows GET always, and CMD/operation only for node ids
@@ -123,7 +124,17 @@ function session({ onReady } = {}) {
   const xmpp = client({ service: `xmpp://${HOST}:5222`, domain: DOMAIN, username, password, resource: `spike${crypto.randomInt(1e6)}` })
   const state = { status: 'offline', room: null, nodes: new Map(), bare: jid, roster: [], paired: false, lastData: null, events: [] }
 
-  xmpp.on('input', (d) => raw('IN ', d))
+  let lastInput = Date.now()
+  xmpp.on('input', (d) => { lastInput = Date.now(); raw('IN ', d) })
+  // Watchdog: INFO/data arrives every ~2 s; a silent connection (sleep, half-open TCP) gets reconnected.
+  const watchdog = setInterval(() => {
+    if (state.status === 'online' && Date.now() - lastInput > 30000) {
+      log('watchdog: no input for 30s -> reconnecting')
+      lastInput = Date.now()
+      xmpp.disconnect().catch((e) => log('disconnect error:', e.message))
+    }
+  }, 5000)
+  xmpp.on('offline', () => clearInterval(watchdog))
   xmpp.on('output', (d) => raw('OUT', d))
   xmpp.on('error', (e) => log('xmpp error:', e.condition || e.message))
   xmpp.on('status', (s) => { state.status = s; log('status:', s) })
@@ -213,7 +224,11 @@ function session({ onReady } = {}) {
       let msg
       try { msg = JSON.parse(bodyText) } catch { log(`non-JSON groupchat from ${from}: ${bodyText.slice(0, 200)}`); return }
       const to = msg.headers?.to
-      if (to !== 'remotes' && to !== state.bare) return
+      if (to !== 'remotes' && to !== state.bare) {
+        log(`<< observed ${msg.headers?.method}/${msg.headers?.type} from ${resource} to ${to}: ${JSON.stringify(msg.body).slice(0, 500)}`)
+        capture(`observed-${msg.headers?.method}-${msg.headers?.type}`, msg)
+        return
+      }
       handleInfo(room, msg)
       return
     }
@@ -264,6 +279,14 @@ async function startSession() {
     throw e
   }
   return s
+}
+
+async function getOnce(type, bodyJson, seconds) {
+  const body = bodyJson ? JSON.parse(bodyJson) : {}
+  const s = session({ onReady: async (state, sendToHome) => { await sendToHome('GET', type, body) } })
+  await s.xmpp.start()
+  await sleep(seconds * 1000)
+  await s.xmpp.stop()
 }
 
 async function listen(seconds) {
@@ -355,6 +378,7 @@ const [cmd, ...args] = process.argv.slice(2)
 try {
   if (cmd === 'register') await register()
   else if (cmd === 'serve') await serve(+(args[0] ?? 8099))
+  else if (cmd === 'get') await getOnce(args[0], args[1], +(args[2] ?? 8))
   else if (cmd === 'listen') await listen(+(args[0] ?? 60))
   else if (cmd === 'unregister') await unregister()
   else console.log('usage: node esmart-test.mjs register | serve [port] | listen [secs] | unregister')

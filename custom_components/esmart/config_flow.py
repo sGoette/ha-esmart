@@ -25,7 +25,7 @@ from .client import (
     iter_nodes,
     register_account,
 )
-from .const import CONF_JID, CONF_PASSWORD, CONF_SWITCHABLE, DOMAIN
+from .const import CONF_DOORS, CONF_JID, CONF_PASSWORD, CONF_SWITCHABLE, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class ESmartConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_create_entry(
             title=title,
             data={CONF_JID: self._jid, CONF_PASSWORD: self._password},
-            options={CONF_SWITCHABLE: []},
+            options={CONF_SWITCHABLE: [], CONF_DOORS: False},
         )
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -135,12 +135,18 @@ class ESmartConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ESmartOptionsFlow(OptionsFlow):
-    """Choose which eSmart nodes Home Assistant may switch. Default: none (read-only)."""
+    """Choose which eSmart nodes Home Assistant may switch, and whether it may open doors.
+
+    Default: none and no (read-only).
+    """
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
             return self.async_create_entry(
-                data={CONF_SWITCHABLE: sorted(int(n) for n in user_input.get(CONF_SWITCHABLE, []))}
+                data={
+                    CONF_SWITCHABLE: sorted(int(n) for n in user_input.get(CONF_SWITCHABLE, [])),
+                    CONF_DOORS: bool(user_input.get(CONF_DOORS, False)),
+                }
             )
 
         client: ESmartClient | None = getattr(self.config_entry, "runtime_data", None)
@@ -149,6 +155,8 @@ class ESmartOptionsFlow(OptionsFlow):
             for _floor, room, node in iter_nodes(client.structure):
                 label = f"{room.get('name', '').strip()} – {node.get('name')} ({node.get('type_name')}, #{node['id']})"
                 options.append(SelectOptionDict(value=str(node["id"]), label=label))
+        names = sorted(client.doors.values()) if client is not None else []
+        doors = ", ".join(names) if names else "none found"
         current = [str(n) for n in self.config_entry.options.get(CONF_SWITCHABLE, [])]
         if client is None:
             options = [SelectOptionDict(value=v, label=f"#{v}") for v in current]
@@ -159,7 +167,9 @@ class ESmartOptionsFlow(OptionsFlow):
                 {
                     vol.Optional(CONF_SWITCHABLE, default=current): SelectSelector(
                         SelectSelectorConfig(options=options, multiple=True, mode=SelectSelectorMode.LIST)
-                    )
+                    ),
+                    vol.Optional(CONF_DOORS, default=self.config_entry.options.get(CONF_DOORS, False)): bool,
                 }
             ),
+            description_placeholders={"doors": doors},
         )
